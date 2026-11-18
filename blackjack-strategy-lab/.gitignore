@@ -1,0 +1,9 @@
+# Binary simulation DB (large, regenerable - do not commit)
+data/
+
+# Keep logs/runs.jsonl and STATUS.md trackable: they are small text artifacts you push
+# for check-ins. (Commit them when you want me to review a run.)
+
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,70 +1,69 @@
-# Blackjack Research Engine - Plan
+# Blackjack Strategy Lab - Plan (v2, standalone repo)
 
 ## Goal
-Build a rigorous, continuously-running simulation engine that finds the REAL edge in
-blackjack (optimal basic strategy + card counting), measures it honestly across
-millions of simulated shoes, and produces a data-backed strategy guide.
+A separate, standalone project that compares many blackjack strategies head-to-head on
+IDENTICAL shoes (common random numbers), reports PER-SHOE results (which strategy wins
+most shoes + under what conditions), ranks by risk-adjusted "most viable" metrics, lets
+us plug in new strategies, and learns/optimizes parameters with a train/test split.
+Runs locally; emits logs + STATUS.md for daily/weekly check-ins.
 
-Optimize for BOTH max win rate AND realistic/casino-practical play.
+## Iron rule (anti-overfitting)
+Strategies may ONLY use info available at decision time (cards on table + running count of
+seen cards). No lookahead at future/undealt cards. "Best strategy per shoe" = best
+PRE-COMMITTED strategy per shoe, never a strategy fitted to that shoe's card order.
 
-## What this is NOT
-- Not a "card-order pattern finder." No such edge exists in a shuffled shoe.
-- Not a betting-progression system (Martingale etc.). The engine will prove these fail.
-
-## Design decisions
-- Language: Python 3.12, standard library ONLY (zero install, runs anywhere).
-- Realistic shoe: multi-deck, configurable rules, cut-card penetration, reshuffle.
-- Data persists in local SQLite, accumulating across every run ("collect over time").
-- Basic strategy chart is DERIVED FROM THE CODE so chart and engine never disagree.
-
-## Rule set modeled (casino-realistic default)
-- 6 decks, dealer Stands on Soft 17 (S17), Double After Split (DAS) allowed,
-  Late Surrender, Blackjack pays 3:2, split to 4 hands, 75% penetration.
-- All rules configurable.
+## Delivery
+- Standalone project dir `blackjack-strategy-lab/`, self-contained (stdlib only).
+- Ship as downloadable .tar.gz + backup copy committed in LAST.
+- User creates the GitHub repo (my access is limited to LAST); provide push commands.
 
 ## Build steps
-- [x] Explore repo, confirm Python version, pick isolated directory
-- [x] Write this plan
-- [ ] rules.py: configurable rule dataclass
-- [ ] engine.py: shoe, counting-aware deal, hand resolution (hit/stand/double/split/surrender), dealer play, round net
-- [ ] strategy.py: correct multi-deck basic strategy (hard/soft/pairs/surrender), DAS-aware
-- [ ] counting.py: Hi-Lo running/true count + configurable bet ramp
-- [ ] storage.py: SQLite cumulative aggregates + per-true-count edge table
-- [ ] simulate.py: batch Monte Carlo loop, updates DB
-- [ ] analysis.py: EV, variance, N0, risk of ruin, edge-by-count
-- [ ] guide.py: generate STRATEGY_GUIDE.md from accumulated data + printed chart
-- [ ] run.py: CLI (calibrate / count / loop / guide)
-- [ ] tests.py: correctness sanity checks
-- [ ] README.md for the blackjack dir
+- [ ] Project skeleton (README, pyproject, .gitignore, pkg dir)
+- [ ] rules.py (reuse validated rules)
+- [ ] engine.py: fixed-shoe dealer, round resolution, insurance, strategy-driven play
+- [ ] counting.py: balanced systems (Hi-Lo, Hi-Opt I/II, Omega II, Zen), true count
+- [ ] strategies.py: Strategy base + Flat, CardCounter (ramp, wong), pluggable
+- [ ] deviations.py: Hi-Lo Illustrious-18 subset (validated to INCREASE edge)
+- [ ] metrics.py: EV/100, SD/100, Desirability Index, N0, risk of ruin, Kelly bankroll
+- [ ] tournament.py: run strategies on identical shoes, per-shoe + aggregate results
+- [ ] optimizer.py: tune bet ramp / wong-out on TRAIN shoes, validate on TEST shoes
+- [ ] storage.py: SQLite cumulative + JSONL run log
+- [ ] reporting.py: STATUS.md generator
+- [ ] run.py: CLI (tournament / optimize / report / loop / list)
+- [ ] tests.py: correctness gates
+- [ ] scripts/init_standalone_repo.sh
 
-## Verification targets (how I prove it works, not just claim it)
-- Flat basic strategy house edge must land ~ -0.4% to -0.6% per unit (known correct value).
-  If it is far off, there is a bug. This is the key correctness gate.
-- Dealer bust rate ~28%, dealer final-17+ distribution sane.
-- Counting + spread must show measurably POSITIVE EV per hand, and edge must rise
-  monotonically with true count. If edge does not increase with the count, something is wrong.
-- Martingale demo must show it does NOT beat the house edge (only increases ruin risk).
+## Verification gates
+- Flat basic house edge ~0.36%.
+- Every counting strategy shows positive edge; edge rises with true count.
+- Hi-Lo + I18 deviations edge > Hi-Lo basic edge (proves deviations are correct, not hurting).
+- Level-2 systems (Hi-Opt II/Omega II) betting correlation >= Hi-Lo (expected).
+- Optimizer's tuned params beat defaults on TEST shoes (not just train).
 
 ## Review (completed 2026-11-18)
-All steps done. Engine built in `blackjack/`, pure Python stdlib.
+Built standalone `blackjack-strategy-lab/` (stdlib only). All gates pass.
 
-Verification results (all gates passed):
-- Dealer bust rate: 28.1% (expected ~28%).
-- Basic strategy house edge: 0.357% over 5M hands (textbook value for 6D/S17/DAS/LS).
-- Counting (Hi-Lo, 1-12 spread): +0.606% edge/unit, +0.97 units/100 hands, over 12M hands.
-  Edge rises monotonically with true count (negative below TC+1, positive above) - the
-  core card-counting thesis, demonstrated from the engine's own data.
-- Basic strategy chart rendered from the engine matches canonical charts on every cell.
-- Risk-of-ruin and bankroll numbers reported honestly (need ~1,300 units for 5% RoR).
+Verification:
+- Deviation ENCODING: 32/32 unit checks vs canonical Hi-Lo Illustrious-18 (found + fixed a
+  missing 13v3 entry). This is the real correctness gate for deviations.
+- Flat basic house edge ~0.245% (matches the first engine's seeded runs).
+- All counters positive; level-2 systems (Hi-Opt II/Zen) edge out Hi-Lo as BC predicts.
+- Per-shoe ranking (risk-adjusted DI) is the headline; per-100-hand is secondary.
 
-Correction made mid-build: first Martingale demo (single long run) showed a misleading
-positive net due to variance. Rewrote it as 20k bankroll-limited sessions, which honestly
-exposes the bust tail: 78% hit goal, 22% bust, average net negative, edge = house edge.
+Two honest course-corrections mid-build (mentor standard applied to my own work):
+1. Ranking by per-HAND EV made Wong/optimizer look absurd (+7-25 u/100) because playing
+   only the best hands trivially maximizes per-hand EV. Switched headline to PER-SHOE
+   (fixed table time), which prices in opportunity cost.
+2. The I18 playing-deviation benefit is real but small (~+0.12 u/100 averaged over seeds)
+   and noisy; a single-seed sim gate was fragile. Replaced it with instant unit tests of
+   the encoding, and documented that betting spread drives ~90% of the edge.
+3. Optimizer was fitting noise (per-shoe EV SD ~19). Made it paired (all candidates on
+   identical shoes), larger samples, and added a significance + train/test-consistency
+   check so it won't claim a win off noise.
 
-Deliverables:
-- `blackjack/STRATEGY_GUIDE.md` - the data-backed guide (committed).
-- `blackjack/` engine + CLI (`run.py loop` is the continuous learner).
+Delivery: tarball sent to user + backup committed in LAST. User creates their own GitHub
+repo (my access is limited to LAST); scripts/init_standalone_repo.sh automates it.
 
-Known minor simplifications (documented, not bugs): dealer hole card is counted even on
-player bust (negligible EV effect); no playing deviations (Illustrious 18) yet - that is
-the obvious v2 and would add ~0.1-0.2% to the counting edge.
+Next-step ideas: full count-specific indices per system; KO/unbalanced (validated);
+rule-comparison sweep (6:5 vs 3:2, H17, penetration); fractional-Kelly bet sizing in the
+tournament; genetic search over strategy params.
